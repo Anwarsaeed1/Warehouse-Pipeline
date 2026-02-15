@@ -1,5 +1,6 @@
 <?php
 
+use App\Exceptions\InsufficientStockException;
 use App\Exceptions\InvalidEmailAndPasswordCombinationException;
 use App\Http\Middleware\LanguageMiddleware;
 use Illuminate\Foundation\Application;
@@ -37,6 +38,12 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->render(function (InvalidEmailAndPasswordCombinationException $e) {
             if (request()->acceptsJson()) {
                 return failResponse($e->getMessage(), $e->getCode());
+            }
+        });
+
+        $exceptions->render(function (InsufficientStockException $e) {
+            if (request()->acceptsJson()) {
+                return failResponse($e->getMessage(), 422);
             }
         });
     })->create();

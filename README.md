@@ -16,6 +16,7 @@ A **Laravel API** for multi-warehouse inventory management: warehouses, inventor
 - [Caching](#caching)
 - [API Reference](#api-reference)
 - [Installation](#installation)
+- [Testing](#testing)
 - [Postman & Reverb](#postman--reverb)
 
 ---
@@ -228,6 +229,18 @@ Event–listener binding is in `AppServiceProvider`: `Event::listen(LowStockDete
    ```bash
    php artisan reverb:start
    ```
+
+---
+
+## Testing
+
+Run all **unit and feature tests** (PHPUnit via Laravel):
+
+```bash
+php artisan test
+```
+
+This runs both the **Unit** (`tests/Unit`) and **Feature** (`tests/Feature`) test suites. Tests use `RefreshDatabase` and your configured database (ensure `.env` is set for testing or use an in-memory SQLite database by uncommenting the `DB_CONNECTION` / `DB_DATABASE` entries in `phpunit.xml` if you prefer).
 
 ---
 
