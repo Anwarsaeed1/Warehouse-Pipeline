@@ -1,236 +1,243 @@
-# Laravel Starter Project
+# Warehouse Pipeline API
 
-Welcome to the **Laravel Starter Project**! This comprehensive starter kit is designed to simplify and accelerate the development of Laravel applications. It comes preloaded with essential features like user management, reporting, export functionality, notifications, and real-time updates powered by **Reverb**. Whether you're building a simple project or a complex application, this starter kit serves as a solid foundation to kickstart your development.
-
-### Key Benefits of the Laravel Starter Project
-- **Pre-built Functionalities:** Save development time with ready-to-use features.
-- **Scalable Architecture:** Designed with scalability and maintainability in mind.
-- **Modern Tools:** Includes integrations with advanced tools like **Laravel Excel**, **Postman**, and **Reverb** for seamless workflows.
-- **Clean Code:** Follows best practices to ensure code clarity and efficiency.
-
-Let’s dive in and explore what this starter project offers!
-
-
-
-## 🚀 Features
-
-### 1. **User Management**
-- User registration and authentication.
-- Role-based access control with CRUD functionality for roles and permissions.
-- Login and logout functionality.
-- Profile management for users.
-
-### 2. **Password Recovery**
-- Secure password reset functionality via email.
-- Token-based reset process to ensure security.
-
-### 3. **Dynamic Reporting System**
-- Advanced reporting functionality with filtering, sorting, and customization options.
-
-### 4. **Export Functionality**
-- Export data in multiple formats (e.g., Excel).
-- Seamless integration with **Laravel Excel** for efficient data handling.
-
-### 5. **Notifications**
-- Real-time and email-based notifications.
-- Supports multiple channels, including email and SMS.
-
-### 6. **Real-Time Updates**
-- Live data synchronization powered by **Reverb**.
-- Provides an enhanced user experience with instant updates.
-
-### 7. **Settings Management**
-- Centralized application settings for streamlined configuration.
-
-### 8. **Help System**
-- Efficiently fetch enumerations and metadata.
-- Retrieve multiple tables in a single request for enhanced performance.
-
-### 9. **Chunked File Uploads**
-- Manage large file uploads by splitting them into smaller chunks for seamless handling.
+A **Laravel API** for multi-warehouse inventory management: warehouses, inventory items, stock levels, and stock transfers between warehouses. Includes authentication (Sanctum), role-based permissions, optional real-time low-stock alerts (Reverb), and cached warehouse inventory.
 
 ---
 
-## 🛠️ Installation
+## Table of Contents
 
-### **Prerequisites**
-- PHP >= 8.0
-- Composer
-- Node.js and npm/yarn
-- MySQL or any supported database
-
-### **Setup Instructions**
-
-1. **Clone the repository:**
-   ```bash
-   git clone <repository-url>
-   cd <project-directory>
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   composer install
-   ```
-
-3. **Set up environment variables:**
-   Copy the `.env.example` file to `.env` and update the necessary configurations.
-   ```bash
-   cp .env.example .env
-   ```
-
-4. **Generate application key:**
-   ```bash
-   php artisan key:generate
-   ```
-
-5. **Run database migrations and seeders:**
-   ```bash
-   php artisan migrate --seed
-   ```
-
-6. **Start the development server:**
-   ```bash
-   php artisan serve
-   ```
-
-7. **Run the queue worker:**
-   For notifications and real-time updates:
-   ```bash
-   php artisan queue:work
-   ```
-
-8. **Start the Reverb server:**
-   ```bash
-   php artisan reverb:start
-   ```
+- [What This Project Does](#what-this-project-does)
+- [Tech Stack](#tech-stack)
+- [Architecture & Structure](#architecture--structure)
+- [Design Patterns](#design-patterns)
+- [Request Flow](#request-flow)
+- [Stock Transfer Flow](#stock-transfer-flow)
+- [Low Stock Alert Flow](#low-stock-alert-flow)
+- [Caching](#caching)
+- [API Reference](#api-reference)
+- [Installation](#installation)
+- [Postman & Reverb](#postman--reverb)
 
 ---
 
-## Warehouse Pipeline API Overview
+## What This Project Does
+
+| Area | Description |
+|------|-------------|
+| **Auth** | Login (email/password), logout. Token-based API auth via Laravel Sanctum. |
+| **Warehouses** | List warehouses with pagination and filters (name, code, location, is_active). |
+| **Inventory items** | List products/items with pagination and filters (search, price range, is_active). |
+| **Stocks** | Per-warehouse, per-item quantity and reserved quantity. List all stocks or one warehouse’s inventory; update quantity/reserved. |
+| **Stock transfers** | Move quantity from one warehouse to another. Validates availability, updates both stocks, creates transfer record, invalidates cache, and may trigger low-stock logic. |
+| **Low stock** | When stock falls at or below a threshold (per item or config), an event is fired: email notification (queued) and optional real-time broadcast (Reverb). |
+
+---
+
+## Tech Stack
+
+- **PHP 8.2+**, **Laravel 11**
+- **Laravel Sanctum** – API authentication
+- **Spatie Laravel Permission** – roles and permissions
+- **Spatie Laravel Translatable** – translatable attributes (e.g. role names)
+- **Laravel Reverb** – WebSocket server for real-time (e.g. low-stock)
+- **Pusher PHP Server** – Reverb uses Pusher protocol
+- **Jenssegers/Date** – date helpers (used in app helpers)
+- **MySQL** (or any Laravel-supported DB)
+
+---
+
+## Architecture & Structure
+
+High-level layout:
+
+```text
+app/
+├── Enum/                    # Enums (e.g. ActiveTypeEnum, StockTransferStatusEnum)
+├── Events/                  # Domain events (e.g. LowStockDetected)
+├── Exceptions/              # Custom exceptions (e.g. InsufficientStockException)
+├── Filters/                 # Query filters (Pipeline pattern)
+│   └── Inventory/           # Warehouse, Stock, InventoryItem filters
+├── Helpers/                 # Global helpers (App.php: successResponse, fetchData, generateTransferNumber, etc.)
+├── Http/
+│   ├── Controllers/API/     # API controllers
+│   │   ├── Auth/            # Login, logout
+│   │   └── Inventory/       # Warehouses, stocks, items, stock-transfers
+│   ├── Middleware/          # e.g. LanguageMiddleware
+│   ├── Requests/            # Form requests (validation)
+│   │   ├── Auth/
+│   │   ├── Global/Other/    # PageRequest (page, pageSize)
+│   │   ├── Inventory/       # WarehouseListRequest, InventoryPageRequest, UpdateStockRequest
+│   │   └── StockTransfer/
+│   └── Resources/           # API resources (JSON shape)
+│       ├── Auth/
+│       └── Inventory/       # Warehouse, Stock, InventoryItem, StockTransfer resources
+├── Listeners/               # Event listeners (e.g. SendLowStockNotification)
+├── Mail/                    # Mailable classes (e.g. LowStockMail)
+├── Models/                  # Eloquent models (User, Warehouse, InventoryItem, Stock, StockTransfer, Role, Permission, …)
+├── Observers/               # Model observers (e.g. UserObserver)
+├── Policies/Inventory/      # Warehouse, InventoryItem, Stock, StockTransfer policies
+├── Providers/               # AppServiceProvider (policies, Sanctum, event–listener binding)
+├── Services/
+│   ├── Auth/                # LoginService
+│   ├── Global/              # RoleService, UploadService
+│   └── Inventory/           # StockTransferService (transfer logic)
+├── Trait/Global/            # EnumMethods, CreatedByObserver, etc.
+└── Scopes/                  # Query scopes (e.g. UserScopes, RoleScopes)
+
+config/
+├── auth.php                 # Guards (sanctum), providers
+├── inventory.php            # low_stock_threshold
+├── broadcasting.php         # Reverb (and other drivers)
+└── reverb.php               # Reverb server/app config
+
+lang/                        # en & ar (api, auth, validation, pagination, etc.)
+routes/
+├── api.php                  # All API routes (auth + protected inventory routes)
+├── channels.php             # Broadcast channel auth
+└── web.php                  # Web routes (e.g. welcome)
+
+Postman/
+└── Warehouse-Pipeline-API.postman_collection.json   # Ready-to-import API collection
+```
+
+---
+
+## Design Patterns
+
+| Pattern | Where it’s used | Purpose |
+|--------|-----------------|--------|
+| **Service layer** | `StockTransferService` | Encapsulates transfer logic: lock stock, validate, move quantity, create transfer, cache invalidation, events. Keeps controller thin. |
+| **Pipeline (middleware-style)** | List endpoints (warehouses, inventory, stocks, items) | Request passes through a list of **filters**; each filter optionally adds `where` (or similar) to the query. Keeps filtering modular and reusable. |
+| **Form Request** | All API actions that accept input | Validation and authorization live in dedicated request classes (e.g. `StockTransferRequest`, `WarehouseListRequest`, `InventoryPageRequest`). |
+| **API Resource** | All JSON responses | `WarehouseResource`, `StockResource`, `InventoryItemResource`, `StockTransferResource` define the response shape and `whenLoaded` for relations. |
+| **Policy (authorization)** | Routes with `->can(...)` | `WarehousePolicy`, `InventoryItemPolicy`, `StockPolicy`, `StockTransferPolicy` gate access (viewAny, view, create, update, etc.) per model. |
+| **Event / Listener** | Low stock | `LowStockDetected` event; `SendLowStockNotification` listener (queued) sends email. Decouples “stock went low” from “notify someone”. |
+| **Custom exception** | Stock transfer | `InsufficientStockException` for “quantity exceeds available”; can be mapped to HTTP 422 in exception handler. |
+| **Repository-style encapsulation** | Inside `StockTransferService` | No generic repository interface; the service encapsulates “lock source stock”, “get or create destination stock”, “create transfer record”, “invalidate cache”, “dispatch events”. |
+
+---
+
+## Request Flow
+
+Typical flow for a protected API call:
+
+1. **HTTP request** → `routes/api.php` (e.g. `POST /api/stock-transfers`).
+2. **Middleware** → `auth:sanctum` (and any global API middleware, e.g. language).
+3. **Route** → Controller method + `->can('create', StockTransfer::class)` (policy check).
+4. **Controller** → Receives **Form Request** (validation runs); calls **Service** or builds query with **Pipeline** (filters).
+5. **Service / Query** → Business logic (e.g. `StockTransferService::transfer`) or filtered/paginated query.
+6. **Response** → **API Resource** (e.g. `StockTransferResource`) → JSON (`successResponse()` helper).
+
+For list endpoints (e.g. `GET /api/warehouses`, `GET /api/inventory`):
+
+- **Form Request** validates query params (page, pageSize, filters).
+- **Pipeline** sends the Eloquent query through **filters** (e.g. `WarehouseNameFilter`, `WarehouseIsActiveFilter`).
+- **Helper** `fetchData($query, $pageSize, ResourceClass)` paginates and returns resource collection.
+
+---
+
+## Stock Transfer Flow
+
+Flow for `POST /api/stock-transfers` (create a transfer):
+
+1. **Request** – `StockTransferRequest` validates `from_warehouse_id`, `to_warehouse_id`, `inventory_item_id`, `quantity`, optional `note`; custom rule ensures quantity ≤ available (source stock).
+2. **Policy** – User must pass `create` on `StockTransfer`.
+3. **Controller** – Calls `StockTransferService::transfer($request->validated(), auth()->id())`.
+4. **Service** (inside a **DB transaction**):
+   - **Lock source stock** – `Stock` for `(from_warehouse_id, inventory_item_id)` with `lockForUpdate()`.
+   - **Validate** – Available quantity (`quantity - reserved_quantity`) ≥ requested quantity; else throw `InsufficientStockException`.
+   - **Decrement** source stock `quantity`.
+   - **Get or create** destination stock for `(to_warehouse_id, inventory_item_id)`; **increment** its `quantity`.
+   - **Create** `StockTransfer` (transfer number, status Completed, `completed_at`, `transferred_by`).
+   - **Invalidate cache** – increment version for both warehouses (`warehouse.inventory.{id}.version`).
+   - **After commit** – `DB::afterCommit()`: refresh source and destination stock; if either’s quantity ≤ low-stock threshold, dispatch `LowStockDetected` for that stock.
+   - **Return** transfer with relations loaded (`fromWarehouse`, `toWarehouse`, `inventoryItem`, `transferredBy`).
+5. **Response** – `StockTransferResource` (IDs + nested warehouse, item, transferred-by user when loaded).
+
+---
+
+## Low Stock Alert Flow
+
+When stock quantity is at or below the threshold (item’s `low_stock_threshold` or `config('inventory.low_stock_threshold')`):
+
+1. **Trigger** – Inside `StockTransferService`, after the transaction commits, for source and/or destination stock.
+2. **Event** – `LowStockDetected` is dispatched with `Stock` model.
+3. **Listener** – `SendLowStockNotification` (queued):
+   - Loads warehouse and inventory item on the stock.
+   - Sends `LowStockMail` to configured admin email.
+4. **Broadcasting** – Same event implements `ShouldBroadcast`; payload is sent to Reverb channel `low-stock` as event `low-stock.detected` (for real-time UIs).
+
+Event–listener binding is in `AppServiceProvider`: `Event::listen(LowStockDetected::class, SendLowStockNotification::class)`.
+
+---
+
+## Caching
+
+- **Warehouse inventory** – List for a single warehouse (`GET /api/warehouses/{id}/inventory`) is cached with a **version key**: `warehouse.inventory.{id}.v{version}.{hash}`. The hash includes request params (e.g. search, price_min, price_max, page, pageSize, item_is_active).
+- **Invalidation** – On stock transfer, `Cache::increment("warehouse.inventory.{id}.version")` is called for both source and destination warehouse, so all cached pages for that warehouse are effectively invalidated.
+- **TTL** – Cached result is stored with a fixed duration (e.g. 5 minutes); version bump makes old cache unused even before TTL.
+
+---
+
+## API Reference
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/api/login` | Login (email, password). Returns token. |
 | POST | `/api/logout` | Logout (Bearer token). |
-| GET | `/api/warehouses` | **List warehouses** (paginated). Filters: `page`, `pageSize`, `name`, `code`, `location`, `is_active` (0/1). |
+| GET | `/api/warehouses` | List warehouses (paginated). Filters: `page`, `pageSize`, `name`, `code`, `location`, `is_active` (0/1). |
 | GET | `/api/warehouses/{id}/inventory` | Cached inventory for one warehouse. Filters: `page`, `pageSize`, `search`, `price_min`, `price_max`, `item_is_active` (0/1). |
 | GET | `/api/inventory` | List stocks (all warehouses). Filters: `page`, `pageSize`, `warehouse_id`, `warehouse_is_active`, `item_is_active`, `search`, `price_min`, `price_max`. |
 | GET | `/api/inventory/items` | List inventory items. Filters: `page`, `pageSize`, `search`, `price_min`, `price_max`, `is_active` (0/1). |
 | PUT | `/api/stocks/{id}` | Update stock (`quantity`, `reserved_quantity`). |
 | POST | `/api/stock-transfers` | Create stock transfer (`from_warehouse_id`, `to_warehouse_id`, `inventory_item_id`, `quantity`, `note`). |
 
-All list endpoints support **pagination** (`page`, `pageSize`). Filter parameters are optional. Protected routes require `Authorization: Bearer {token}`.
+- All list endpoints support **pagination** via `page` and `pageSize`.
+- Filter parameters are optional.
+- Protected routes require `Authorization: Bearer {token}` and the corresponding policy ability.
 
 ---
 
-## 📑 Postman Collection
+## Installation
 
-A **Postman Collection** is included to simplify API testing. The file is located at `Postman/Warehouse-Pipeline-API.postman_collection.json`.
+**Prerequisites:** PHP 8.2+, Composer, MySQL (or compatible DB).
 
-### **How to Use:**
-
-1. **Import the collection:**
-    - Open Postman and select **Import**.
-    - Upload the provided JSON file.
-
-2. **Set environment variables:**
-    - Update the base URL to match your application’s URL.
-
-3. **Test the APIs:**
-    - Use the predefined requests to interact with the application’s features.
-
----
-
-## 📂 Project Structure
-
-This project follows a clean and modular structure for better maintainability. Below is an overview of the directory layout:
-
-```plaintext
-app
-├── Console          # Custom Artisan commands
-├── Enum             # Enumeration classes
-├── Events           # Application events
-├── Exceptions       # Custom exception handling
-├── Filters          # Query filters for modular data fetching
-│   ├── Example
-│   ├── Global
-│   ├── Setting
-│   └── User
-├── Helpers          # Helper functions for common utilities
-├── Http             # HTTP-specific logic
-│   ├── Controllers  # API controllers
-│   │   ├── Auth
-│   │   ├── Example
-│   │   ├── Global
-│   │   └── User
-│   ├── Middleware   # HTTP middleware
-│   ├── Requests     # Form request validation
-│   │   ├── Auth
-│   │   ├── Example
-│   │   ├── Global
-│   │   └── User
-│   └── Resources    # API resources for JSON responses
-│       ├── Auth
-│       ├── Example
-│       ├── Global
-│       └── User
-├── Jobs             # Queueable jobs
-```
-
-This structure ensures a clear separation of concerns and facilitates scalability.
-
----
-
-## 🌐 Real-Time Integration with Reverb
-
-This project leverages **Reverb** for real-time updates. Ensure the following environment variables are properly configured in your `.env` file:
-
-```env
-REVERB_APP_ID=1080194
-REVERB_APP_KEY=bae3160ce349d284eace
-REVERB_APP_SECRET=976e5b64127df42af8b6
-REVERB_SCHEME=http
-REVERB_HOST="127.0.0.1"
-REVERB_PORT=9000
-REVERB_SERVER_HOST="0.0.0.0"
-REVERB_SERVER_PORT=9000
-REVERB_SSL_LOCAL_CERT=""
-REVERB_SSL_LOCAL_PK=""
-```
-
-Set `REALTIME=true` to enable real-time functionality.
-
----
-
-## 🤝 Contribution Guidelines
-
-We welcome contributions to improve this starter project! Follow these steps to contribute:
-
-1. **Fork the repository.**
-2. **Create a new branch:**
+1. Clone and install dependencies:
    ```bash
-   git checkout -b feature/your-feature-name
+   composer install
    ```
-3. **Commit your changes:**
+2. Environment:
    ```bash
-   git commit -m "Add your message here"
+   cp .env.example .env
+   php artisan key:generate
    ```
-4. **Push your branch:**
+3. Configure `.env` (DB, `BROADCAST_CONNECTION=reverb` if using Reverb, Reverb app keys/host/port, mail).
+4. Migrate and seed:
    ```bash
-   git push origin feature/your-feature-name
+   php artisan migrate --seed
    ```
-5. **Open a pull request:**
-   Submit your pull request on GitHub.
+5. Run the app:
+   ```bash
+   php artisan serve
+   ```
+6. Optional: queue worker for low-stock email:
+   ```bash
+   php artisan queue:work
+   ```
+7. Optional: Reverb for real-time:
+   ```bash
+   php artisan reverb:start
+   ```
 
 ---
 
-## 📝 License
+## Postman & Reverb
 
-This project is open-source and available under the **MIT License**.
+- **Postman** – Import `Postman/Warehouse-Pipeline-API.postman_collection.json`. Set collection variables: `base_url`, `token` (after login). All list endpoints include query params for pagination and filters.
+- **Reverb** – Set `BROADCAST_CONNECTION=reverb` and Reverb env vars in `.env`. Subscribe to channel `low-stock` and listen for event `low-stock.detected` to receive real-time low-stock payloads.
 
 ---
 
-## 📧 Support
+## License
 
-For questions or support, feel free to reach out to the project maintainer, **Hassan Elhawary**, via email at [hasanhawary1@gmail.com](mailto:hasanhawary1@gmail.com). Alternatively, you can open an issue directly on the repository for further assistance.
-
+MIT.
