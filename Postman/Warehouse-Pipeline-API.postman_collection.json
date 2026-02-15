@@ -1,0 +1,294 @@
+{
+	"info": {
+		"_postman_id": "warehouse-pipeline-api",
+		"name": "Warehouse Pipeline API",
+		"description": "API collection for Warehouse Pipeline. Includes Auth, Inventory (with search/filter/pagination), Stock Transfers, and Warehouses.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost"
+		},
+		{
+			"key": "token",
+			"value": ""
+		},
+		{
+			"key": "warehouse_id",
+			"value": "1"
+		},
+		{
+			"key": "stock_id",
+			"value": "1"
+		}
+	],
+	"item": [
+		{
+			"name": "Auth",
+			"item": [
+				{
+					"name": "Login",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"test@example.com\",\n    \"password\": \"123456\"\n}"
+						},
+						"url": "{{base_url}}/api/login",
+						"description": "**Required:** email, password. Returns token; set it in collection variable `token` for other requests."
+					}
+				},
+				{
+					"name": "Logout",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": "{{base_url}}/api/logout",
+						"description": "Invalidates current token. Requires Bearer token."
+					}
+				}
+			]
+		},
+		{
+			"name": "Inventory",
+			"item": [
+				{
+					"name": "List inventory (stocks)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/inventory?page=1&pageSize=15&warehouse_id=&warehouse_is_active=&item_is_active=&search=&price_min=&price_max=",
+							"host": ["{{base_url}}"],
+							"path": ["api", "inventory"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1",
+									"description": "Page number (min: 1)"
+								},
+								{
+									"key": "pageSize",
+									"value": "15",
+									"description": "Items per page"
+								},
+								{
+									"key": "warehouse_id",
+									"value": "",
+									"description": "Filter by warehouse ID"
+								},
+								{
+									"key": "warehouse_is_active",
+									"value": "",
+									"description": "Filter by warehouse active: 0 or 1"
+								},
+								{
+									"key": "item_is_active",
+									"value": "",
+									"description": "Filter by inventory item active: 0 or 1"
+								},
+								{
+									"key": "search",
+									"value": "",
+									"description": "Search by inventory item name (partial match)"
+								},
+								{
+									"key": "price_min",
+									"value": "",
+									"description": "Min item price"
+								},
+								{
+									"key": "price_max",
+									"value": "",
+									"description": "Max item price (must be >= price_min)"
+								}
+							]
+						},
+						"description": "Paginated list of stock. Query: page, pageSize, warehouse_id, warehouse_is_active, item_is_active, search, price_min, price_max."
+					}
+				},
+				{
+					"name": "List inventory items",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/inventory/items?page=1&pageSize=15&search=&price_min=&price_max=&is_active=",
+							"host": ["{{base_url}}"],
+							"path": ["api", "inventory", "items"],
+							"query": [
+								{"key": "page", "value": "1", "description": "Page number (min: 1)"},
+								{"key": "pageSize", "value": "15", "description": "Items per page"},
+								{"key": "search", "value": "", "description": "Search by item name (partial match)"},
+								{"key": "price_min", "value": "", "description": "Min price"},
+								{"key": "price_max", "value": "", "description": "Max price (>= price_min)"},
+								{"key": "is_active", "value": "", "description": "Filter by active: 0 = Inactive, 1 = Active"}
+							]
+						},
+						"description": "Paginated list of inventory items. Query: page, pageSize, search, price_min, price_max, is_active (0 or 1)."
+					}
+				},
+				{
+					"name": "Update stock",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"quantity\": 100,\n    \"reserved_quantity\": 0\n}"
+						},
+						"url": "{{base_url}}/api/stocks/{{stock_id}}",
+						"description": "Update quantity and/or reserved_quantity for a stock. At least one field. reserved_quantity cannot exceed quantity. Path: stock ID."
+					}
+				}
+			]
+		},
+		{
+			"name": "Stock Transfers",
+			"item": [
+				{
+					"name": "Create stock transfer",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"from_warehouse_id\": 1,\n    \"to_warehouse_id\": 2,\n    \"inventory_item_id\": 1,\n    \"quantity\": 10,\n    \"note\": \"Optional note\"\n}"
+						},
+						"url": "{{base_url}}/api/stock-transfers",
+						"description": "**Required:** from_warehouse_id, to_warehouse_id (different from from), inventory_item_id, quantity (min: 1). **Optional:** note. Quantity must not exceed available stock in source warehouse."
+					}
+				}
+			]
+		},
+		{
+			"name": "Warehouses",
+			"item": [
+				{
+					"name": "List warehouses",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/warehouses?page=1&pageSize=15&name=&code=&location=&is_active=",
+							"host": ["{{base_url}}"],
+							"path": ["api", "warehouses"],
+							"query": [
+								{"key": "page", "value": "1", "description": "Page number (min: 1)"},
+								{"key": "pageSize", "value": "15", "description": "Items per page"},
+								{"key": "name", "value": "", "description": "Filter by warehouse name (partial match)"},
+								{"key": "code", "value": "", "description": "Filter by warehouse code (partial match)"},
+								{"key": "location", "value": "", "description": "Filter by location (partial match)"},
+								{"key": "is_active", "value": "", "description": "Filter by active: 0 = Inactive, 1 = Active"}
+							]
+						},
+						"description": "Paginated list of warehouses. Query: page, pageSize, name, code, location, is_active (0 or 1)."
+					}
+				},
+				{
+					"name": "Warehouse inventory",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/warehouses/{{warehouse_id}}/inventory?page=1&pageSize=15&search=&price_min=&price_max=&item_is_active=",
+							"host": ["{{base_url}}"],
+							"path": ["api", "warehouses", "{{warehouse_id}}", "inventory"],
+							"query": [
+								{"key": "page", "value": "1", "description": "Page number (min: 1)"},
+								{"key": "pageSize", "value": "15", "description": "Items per page"},
+								{"key": "search", "value": "", "description": "Search by item name"},
+								{"key": "price_min", "value": "", "description": "Min item price"},
+								{"key": "price_max", "value": "", "description": "Max item price"},
+								{"key": "item_is_active", "value": "", "description": "Filter by item active: 0 or 1"}
+							]
+						},
+						"description": "Cached inventory for one warehouse. Query: page, pageSize, search, price_min, price_max, item_is_active (0 or 1)."
+					}
+				}
+			]
+		}
+	]
+}
